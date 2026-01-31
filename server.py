@@ -50,8 +50,10 @@ async def initialize_pltm():
     global store, pipeline, personality_agent, personality_synth
     global mood_tracker, mood_patterns, conflict_resolver, contextual_personality
     
-    # Initialize storage
-    store = SQLiteGraphStore("pltm_mcp.db")
+    # Initialize storage with absolute path to ensure data persists in known location
+    import os
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pltm_mcp.db")
+    store = SQLiteGraphStore(db_path)
     await store.connect()
     
     # Initialize pipeline
