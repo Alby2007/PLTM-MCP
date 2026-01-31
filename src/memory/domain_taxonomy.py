@@ -326,26 +326,27 @@ class DomainTaxonomy:
             return
         
         # Get all predicates with optional limit
+        # CRITICAL: Must query from 'substantiated' graph where data actually lives
         if user_id:
             if limit:
                 cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? LIMIT ?",
+                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated' LIMIT ?",
                     (user_id, limit)
                 )
             else:
                 cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ?",
+                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated'",
                     (user_id,)
                 )
         else:
             if limit:
                 cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms LIMIT ?",
+                    "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated' LIMIT ?",
                     (limit,)
                 )
             else:
                 cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms"
+                    "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated'"
                 )
         
         rows = await cursor.fetchall()
