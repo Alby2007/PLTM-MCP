@@ -35,7 +35,13 @@ class SQLiteGraphStore:
         self._conn = await aiosqlite.connect(str(self.db_path))
         self._conn.row_factory = aiosqlite.Row
         
+        # Enable WAL mode for better concurrency and durability
+        await self._conn.execute("PRAGMA journal_mode=WAL")
+        # Ensure data is written to disk immediately
+        await self._conn.execute("PRAGMA synchronous=FULL")
+        
         await self._setup_schema()
+        await self._conn.commit()  # Ensure schema is committed
         logger.info(f"Connected to database: {self.db_path}")
 
     async def close(self) -> None:
