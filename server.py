@@ -1138,6 +1138,19 @@ async def list_tools() -> List[Tool]:
             }
         ),
         
+        Tool(
+            name="ingest_arxiv_semantic",
+            description="Ingest arXiv paper using semantic atom parsing - breaks text into atomic semantic units aligned with LLM embeddings. Each unit = one thought/clause.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "arxiv_id": {"type": "string", "description": "ArXiv paper ID (e.g., '1706.03762')"},
+                    "user_id": {"type": "string", "description": "User/subject to store claims under (default: pltm_knowledge)"}
+                },
+                "required": ["arxiv_id"]
+            }
+        ),
+        
         # === DOMAIN TAXONOMY ===
         Tool(
             name="taxonomy_classify",
@@ -1455,6 +1468,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         elif name == "arxiv_history":
             return await handle_arxiv_history(arguments)
+        
+        elif name == "ingest_arxiv_semantic":
+            return await handle_ingest_arxiv_semantic(arguments)
         
         # Taxonomy
         elif name == "taxonomy_classify":
@@ -3098,6 +3114,68 @@ async def handle_arxiv_history(args: Dict[str, Any]) -> List[TextContent]:
     ai = get_arxiv_ingestion()
     history = ai.get_ingestion_history(args.get("last_n", 10))
     return [TextContent(type="text", text=compact_json({"n": len(history), "history": history}))]
+
+
+async def handle_ingest_arxiv_semantic(args: Dict[str, Any]) -> List[TextContent]:
+    """Ingest arXiv paper using semantic atom parsing"""
+    from src.extraction.semantic_atom_parser import SemanticAtomParser
+    
+    arxiv_id = args.get("arxiv_id")
+    user_id = args.get("user_id", "pltm_knowledge")
+    
+    # Fetch paper using existing arxiv ingestion
+    ai = get_arxiv_ingestion()
+    
+    # Get paper metadata and text
+    try:
+        import arxiv
+        search = arxiv.Search(id_list=[arxiv_id])
+        paper = next(search.results())
+        
+        # Combine title and abstract for parsing
+        text = f"{paper.title}. {paper.summary}"
+        
+        # Parse into semantic units
+        parser = SemanticAtomParser()
+        units = parser.parse_text(text)
+        
+        # Convert to atoms
+        atoms_data = parser.units_to_atoms(units, arxiv_id, "arxiv")
+        
+        # Store each atom
+        stored_count = 0
+        for atom_data in atoms_data:
+            atom = MemoryAtom(
+                atom_type=AtomType.STATE,
+                subject=atom_data['subject'],
+                predicate=atom_data['predicate'],
+                object=atom_data['object'],
+                confidence=atom_data['confidence'],
+                strength=atom_data['confidence'],
+                provenance=Provenance.EXTERNAL,
+                source_user=user_id,
+                contexts=[],
+                graph=GraphType.SUBSTANTIATED
+            )
+            await store.add_atom(atom)
+            stored_count += 1
+        
+        return [TextContent(type="text", text=compact_json({
+            "status": "success",
+            "arxiv_id": arxiv_id,
+            "paper_title": paper.title,
+            "semantic_units": len(units),
+            "atoms_stored": stored_count,
+            "structured_atoms": sum(1 for u in units if u.subject and u.predicate),
+            "unstructured_atoms": sum(1 for u in units if not (u.subject and u.predicate))
+        }))]
+        
+    except Exception as e:
+        logger.error(f"Error ingesting arxiv paper semantically: {e}")
+        return [TextContent(type="text", text=compact_json({
+            "status": "error",
+            "error": str(e)
+        }))]
 
 
 # === DOMAIN TAXONOMY HANDLERS ===
