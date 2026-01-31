@@ -1229,6 +1229,44 @@ async def list_tools() -> List[Tool]:
                 "required": []
             }
         ),
+        
+        # === INFECTIOUS ATOM TRACKING ===
+        Tool(
+            name="analyze_infectiousness",
+            description="Analyze atoms for memetic fitness - identify self-replicating knowledge patterns based on retrieval, confidence, connectivity.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "min_confidence": {"type": "number", "description": "Minimum confidence threshold (default 0.0)"},
+                    "limit": {"type": "integer", "description": "Limit number of atoms to analyze"}
+                },
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="export_infectious_atoms",
+            description="Export top infectious atoms to JSONL format for fine-tuning. Creates training data from most successful knowledge patterns.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "output_path": {"type": "string", "description": "Path to output JSONL file (default: infectious_atoms.jsonl)"},
+                    "top_n": {"type": "integer", "description": "Number of top atoms to export (default 100)"},
+                    "min_score": {"type": "number", "description": "Minimum infectiousness score (default 0.5)"}
+                },
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="replication_patterns",
+            description="Analyze how atoms replicate through the system - predicate distribution, entropy, dominant patterns.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
     ]
 
 
@@ -1493,6 +1531,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         elif name == "taxonomy_export":
             return await handle_taxonomy_export(arguments)
+        
+        # Infectious Atom Tracking
+        elif name == "analyze_infectiousness":
+            return await handle_analyze_infectiousness(arguments)
+        
+        elif name == "export_infectious_atoms":
+            return await handle_export_infectious_atoms(arguments)
+        
+        elif name == "replication_patterns":
+            return await handle_replication_patterns(arguments)
         
         else:
             return [TextContent(
@@ -3271,6 +3319,68 @@ async def handle_taxonomy_export(args: Dict[str, Any]) -> List[TextContent]:
     tax = get_domain_taxonomy()
     export = tax.export_taxonomy()
     return [TextContent(type="text", text=compact_json(export))]
+
+
+# === INFECTIOUS ATOM TRACKING HANDLERS ===
+
+_infectious_tracker = None
+
+def get_infectious_tracker():
+    global _infectious_tracker
+    if _infectious_tracker is None:
+        from src.analysis.infectious_tracker import InfectiousAtomTracker
+        _infectious_tracker = InfectiousAtomTracker(store)
+    return _infectious_tracker
+
+
+async def handle_analyze_infectiousness(args: Dict[str, Any]) -> List[TextContent]:
+    """Analyze atoms for memetic fitness"""
+    tracker = get_infectious_tracker()
+    
+    min_confidence = args.get("min_confidence", 0.0)
+    limit = args.get("limit")
+    
+    results = await tracker.analyze_infectiousness(min_confidence, limit)
+    
+    # Return top 10 for display
+    top_10 = results[:10]
+    
+    return [TextContent(type="text", text=compact_json({
+        "total_analyzed": len(results),
+        "top_10_infectious": [
+            {
+                "predicate": r["predicate"],
+                "object": r["object"],
+                "score": round(r["infectiousness_score"], 3),
+                "confidence": round(r["confidence"], 2),
+                "metrics": {k: round(v, 3) for k, v in r["metrics"].items()}
+            }
+            for r in top_10
+        ],
+        "avg_score": round(sum(r["infectiousness_score"] for r in results) / len(results), 3) if results else 0
+    }))]
+
+
+async def handle_export_infectious_atoms(args: Dict[str, Any]) -> List[TextContent]:
+    """Export infectious atoms to JSONL for fine-tuning"""
+    tracker = get_infectious_tracker()
+    
+    output_path = args.get("output_path", "infectious_atoms.jsonl")
+    top_n = args.get("top_n", 100)
+    min_score = args.get("min_score", 0.5)
+    
+    stats = await tracker.export_to_jsonl(output_path, top_n, min_score)
+    
+    return [TextContent(type="text", text=compact_json(stats))]
+
+
+async def handle_replication_patterns(args: Dict[str, Any]) -> List[TextContent]:
+    """Analyze replication patterns in the system"""
+    tracker = get_infectious_tracker()
+    
+    patterns = await tracker.get_replication_patterns()
+    
+    return [TextContent(type="text", text=compact_json(patterns))]
 
 
 async def main():
