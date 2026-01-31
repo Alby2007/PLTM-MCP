@@ -315,7 +315,7 @@ class DomainTaxonomy:
             "depth_distribution": depths
         }
     
-    async def build_from_atoms(self, user_id: Optional[str] = None):
+    async def build_from_atoms(self, user_id: Optional[str] = None, limit: Optional[int] = None):
         """
         Build taxonomy from existing atoms in database.
         
@@ -325,25 +325,43 @@ class DomainTaxonomy:
             logger.warning("No database connection - cannot build from atoms")
             return
         
-        # Get all predicates
+        # Get all predicates with optional limit
         if user_id:
-            cursor = await self.store._conn.execute(
-                "SELECT DISTINCT predicate FROM atoms WHERE subject = ?",
-                (user_id,)
-            )
+            if limit:
+                cursor = await self.store._conn.execute(
+                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? LIMIT ?",
+                    (user_id, limit)
+                )
+            else:
+                cursor = await self.store._conn.execute(
+                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ?",
+                    (user_id,)
+                )
         else:
-            cursor = await self.store._conn.execute(
-                "SELECT DISTINCT predicate FROM atoms"
-            )
+            if limit:
+                cursor = await self.store._conn.execute(
+                    "SELECT DISTINCT predicate FROM atoms LIMIT ?",
+                    (limit,)
+                )
+            else:
+                cursor = await self.store._conn.execute(
+                    "SELECT DISTINCT predicate FROM atoms"
+                )
         
         rows = await cursor.fetchall()
         predicates = [r[0] for r in rows]
         
         # Classify each predicate
+        classified = 0
         for pred in predicates:
             self.classify_predicate(pred)
+            classified += 1
+            
+            # Log progress every 50 predicates
+            if classified % 50 == 0:
+                logger.debug(f"Classified {classified}/{len(predicates)} predicates")
         
-        logger.info(f"Built taxonomy from {len(predicates)} predicates")
+        logger.info(f"Built taxonomy from {len(predicates)} predicates across {len(self.nodes)} domains")
     
     def export_taxonomy(self) -> Dict:
         """Export taxonomy as JSON-serializable dict"""
