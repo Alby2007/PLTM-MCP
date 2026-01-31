@@ -325,32 +325,39 @@ class DomainTaxonomy:
             logger.warning("No database connection - cannot build from atoms")
             return
         
-        # Get all predicates with optional limit
-        # CRITICAL: Must query from 'substantiated' graph where data actually lives
-        if user_id:
-            if limit:
-                cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated' LIMIT ?",
-                    (user_id, limit)
-                )
+        try:
+            # Get all predicates with optional limit
+            # CRITICAL: Must query from 'substantiated' graph where data actually lives
+            logger.info(f"Building taxonomy from atoms (user_id={user_id}, limit={limit})")
+            
+            if user_id:
+                if limit:
+                    cursor = await self.store._conn.execute(
+                        "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated' LIMIT ?",
+                        (user_id, limit)
+                    )
+                else:
+                    cursor = await self.store._conn.execute(
+                        "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated'",
+                        (user_id,)
+                    )
             else:
-                cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE subject = ? AND graph = 'substantiated'",
-                    (user_id,)
-                )
-        else:
-            if limit:
-                cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated' LIMIT ?",
-                    (limit,)
-                )
-            else:
-                cursor = await self.store._conn.execute(
-                    "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated'"
-                )
-        
-        rows = await cursor.fetchall()
-        predicates = [r[0] for r in rows]
+                if limit:
+                    cursor = await self.store._conn.execute(
+                        "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated' LIMIT ?",
+                        (limit,)
+                    )
+                else:
+                    cursor = await self.store._conn.execute(
+                        "SELECT DISTINCT predicate FROM atoms WHERE graph = 'substantiated'"
+                    )
+            
+            rows = await cursor.fetchall()
+            predicates = [r[0] for r in rows]
+            logger.info(f"Retrieved {len(predicates)} distinct predicates from database")
+        except Exception as e:
+            logger.error(f"Error querying predicates: {e}")
+            return
         
         # Classify each predicate
         classified = 0
