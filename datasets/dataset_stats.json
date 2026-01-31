@@ -1,0 +1,30 @@
+{
+  "total_atoms_analyzed": 183,
+  "dataset_size": 61,
+  "datasets": {
+    "control": {
+      "path": "datasets\\control_atoms.jsonl",
+      "examples": 61,
+      "avg_confidence": 0.59,
+      "description": "Random sample - baseline"
+    },
+    "infectious": {
+      "path": "datasets\\infectious_atoms.jsonl",
+      "examples": 61,
+      "avg_infectiousness": 0.335,
+      "description": "Top memetic fitness - self-replicating patterns"
+    },
+    "balanced": {
+      "path": "datasets\\balanced_atoms.jsonl",
+      "examples": 60,
+      "description": "50/50 mix - control for dataset size"
+    }
+  },
+  "next_steps": [
+    "1. Upload datasets to fine-tuning platform (OpenAI, Anthropic, etc.)",
+    "2. Fine-tune 3 separate models (one per dataset)",
+    "3. Test each model on same prompts",
+    "4. Compare: Does infectious model generate more self-replicating ideas?",
+    "5. Measure: Jury acceptance rate, cross-domain connectivity, replication patterns"
+  ]
+}
