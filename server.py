@@ -1135,6 +1135,85 @@ async def list_tools() -> List[Tool]:
                 "required": []
             }
         ),
+        
+        # === DOMAIN TAXONOMY ===
+        Tool(
+            name="taxonomy_classify",
+            description="Classify a predicate into a domain in the taxonomy hierarchy.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "predicate": {"type": "string", "description": "Predicate to classify"}
+                },
+                "required": ["predicate"]
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_build",
+            description="Build taxonomy from existing atoms in database. Classifies all predicates.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "string", "description": "User ID (optional, builds from all atoms if not provided)"}
+                },
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_stats",
+            description="Get taxonomy statistics: total domains, predicates, depth distribution.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_gaps",
+            description="Find knowledge gaps - domains with few predicates.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "min_predicates": {"type": "integer", "description": "Minimum predicates threshold (default 3)"}
+                },
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_synthesis",
+            description="Suggest cross-domain synthesis opportunities from rich, distant domains.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_path",
+            description="Get path from a domain to root in the hierarchy.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "domain": {"type": "string", "description": "Domain name"}
+                },
+                "required": ["domain"]
+            }
+        ),
+        
+        Tool(
+            name="taxonomy_export",
+            description="Export complete taxonomy as JSON.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
     ]
 
 
@@ -1374,6 +1453,28 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         elif name == "arxiv_history":
             return await handle_arxiv_history(arguments)
+        
+        # Taxonomy
+        elif name == "taxonomy_classify":
+            return await handle_taxonomy_classify(arguments)
+        
+        elif name == "taxonomy_build":
+            return await handle_taxonomy_build(arguments)
+        
+        elif name == "taxonomy_stats":
+            return await handle_taxonomy_stats(arguments)
+        
+        elif name == "taxonomy_gaps":
+            return await handle_taxonomy_gaps(arguments)
+        
+        elif name == "taxonomy_synthesis":
+            return await handle_taxonomy_synthesis(arguments)
+        
+        elif name == "taxonomy_path":
+            return await handle_taxonomy_path(arguments)
+        
+        elif name == "taxonomy_export":
+            return await handle_taxonomy_export(arguments)
         
         else:
             return [TextContent(
@@ -2995,6 +3096,101 @@ async def handle_arxiv_history(args: Dict[str, Any]) -> List[TextContent]:
     ai = get_arxiv_ingestion()
     history = ai.get_ingestion_history(args.get("last_n", 10))
     return [TextContent(type="text", text=compact_json({"n": len(history), "history": history}))]
+
+
+# === DOMAIN TAXONOMY HANDLERS ===
+
+_domain_taxonomy = None
+
+def get_domain_taxonomy():
+    global _domain_taxonomy
+    if _domain_taxonomy is None:
+        from src.memory.domain_taxonomy import DomainTaxonomy
+        _domain_taxonomy = DomainTaxonomy(store)
+    return _domain_taxonomy
+
+
+async def handle_taxonomy_classify(args: Dict[str, Any]) -> List[TextContent]:
+    """Classify a predicate into a domain"""
+    tax = get_domain_taxonomy()
+    predicate = args.get("predicate")
+    domain = tax.classify_predicate(predicate)
+    path = tax.get_path_to_root(domain)
+    
+    return [TextContent(type="text", text=compact_json({
+        "predicate": predicate,
+        "domain": domain,
+        "path": path
+    }))]
+
+
+async def handle_taxonomy_build(args: Dict[str, Any]) -> List[TextContent]:
+    """Build taxonomy from database atoms"""
+    tax = get_domain_taxonomy()
+    user_id = args.get("user_id")
+    
+    await tax.build_from_atoms(user_id)
+    stats = tax.get_domain_stats()
+    
+    return [TextContent(type="text", text=compact_json({
+        "ok": True,
+        "user_id": user_id or "all",
+        "stats": stats
+    }))]
+
+
+async def handle_taxonomy_stats(args: Dict[str, Any]) -> List[TextContent]:
+    """Get taxonomy statistics"""
+    tax = get_domain_taxonomy()
+    stats = tax.get_domain_stats()
+    return [TextContent(type="text", text=compact_json(stats))]
+
+
+async def handle_taxonomy_gaps(args: Dict[str, Any]) -> List[TextContent]:
+    """Find knowledge gaps"""
+    tax = get_domain_taxonomy()
+    min_predicates = args.get("min_predicates", 3)
+    gaps = tax.find_knowledge_gaps(min_predicates)
+    
+    return [TextContent(type="text", text=compact_json({
+        "gaps": [{"domain": d, "predicates": c} for d, c in gaps[:10]],
+        "total_gaps": len(gaps)
+    }))]
+
+
+async def handle_taxonomy_synthesis(args: Dict[str, Any]) -> List[TextContent]:
+    """Suggest cross-domain synthesis"""
+    tax = get_domain_taxonomy()
+    suggestions = tax.suggest_cross_domain_synthesis()
+    
+    return [TextContent(type="text", text=compact_json({
+        "suggestions": [
+            {"domain1": d1, "domain2": d2, "reason": r}
+            for d1, d2, r in suggestions
+        ],
+        "count": len(suggestions)
+    }))]
+
+
+async def handle_taxonomy_path(args: Dict[str, Any]) -> List[TextContent]:
+    """Get path to root"""
+    tax = get_domain_taxonomy()
+    domain = args.get("domain")
+    path = tax.get_path_to_root(domain)
+    siblings = tax.get_siblings(domain)
+    
+    return [TextContent(type="text", text=compact_json({
+        "domain": domain,
+        "path": path,
+        "siblings": siblings
+    }))]
+
+
+async def handle_taxonomy_export(args: Dict[str, Any]) -> List[TextContent]:
+    """Export taxonomy"""
+    tax = get_domain_taxonomy()
+    export = tax.export_taxonomy()
+    return [TextContent(type="text", text=compact_json(export))]
 
 
 async def main():
